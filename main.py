@@ -5,9 +5,9 @@ from threading import Thread
 
 # --- إعدادات البوت ---
 API_TOKEN = '8716799001:AAE0teJRfBQk7TzMFwqZ4zCuGK7E5eSpPtg'
-MY_ID = 7322325980  # الـ ID الخاص بكِ (أم عائشة)
+MY_ID = 7322325980  # معرف أم عائشة الشخصي
 
-# قائمة المعلمات (الأسماء تظهر مع الوردة في البوت)
+# قائمة المعلمات الرسمية
 TEACHERS = {
     "🌷 الْمُعَلِّمَةُ فَوْزِيَّة": 8104529547,
     "🌷 الْمُعَلِّمَةُ سَنَاء": 6266125898,
@@ -20,37 +20,33 @@ bot = telebot.TeleBot(API_TOKEN)
 app = Flask('')
 
 @app.route('/')
-def home(): return "البوت يعمل بجمالية ونظام!"
+def home(): return "البوت يعمل بنظام الأوامر السرية!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    # إنشاء لوحة الأزرار
     markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-    
-    # إضافة أسماء المعلمات مع الوردة
+    # تظهر فقط أسماء المعلمات للطالبات
     for name in TEACHERS.keys():
         markup.add(types.KeyboardButton(name))
-    
-    # إضافة زر التجربة لَكِ أَنْتِ فَقَطْ (بشكل مميز)
-    if message.chat.id == MY_ID:
-        markup.add(types.KeyboardButton("✨ تَجْرِبَةُ الْبُوتِ (أَنَا)"))
     
     welcome_text = "السَّلَامُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ.\nلِمَنْ تُرِيدِينَ إِرْسَالَ حَلِّ الْوَاجِبِ يَا غَالِيَتِي؟"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-@bot.message_handler(func=lambda message: message.text in TEACHERS.keys() or message.text == "✨ تَجْرِبَةُ الْبُوتِ (أَنَا)")
+# --- معالج الأوامر (الأزرار الرسمية + الأمر السري) ---
+@bot.message_handler(func=lambda message: message.text in TEACHERS.keys() or message.text == "@oumaaicha1")
 def set_teacher(message):
-    if message.text == "✨ تَجْرِبَةُ الْبُوتِ (أَنَا)":
+    if message.text == "@oumaaicha1":
+        # تفعيل التوجيه لحسابكِ سراً
         user_selections[message.chat.id] = MY_ID
+        instructions = "🤫 تَمَّ تَوْجِيهُ الْوَاجِبَاتِ إِلَى **أُمِّ عَائِشَةَ** (وَضْعُ الِاخْتِبَارِ السِّرِّيِّ).\nيُرْجَى إِرْسَالُ الْآنَ اسْمُكِ مَعَ حَلِّ الْوَاجِبِ."
     else:
+        # التوجيه للمعلمات
         user_selections[message.chat.id] = TEACHERS[message.text]
-        
-    instructions = (
-        f"حَسَنًا، سَيَتِمُّ إِرْسَالُ حَلِّكِ إِلَى **{message.text}**.\n\n"
-        "يُرْجَى الْآنَ إِرْسَالَ اسْمُكِ مَعَ حَلِّ الْوَاجِبِ (صُورَة، مَلَفّ، أَوْ نَصّ)."
-    )
+        instructions = f"حَسَنًا، سَيَتِمُّ إِرْسَالُ حَلِّكِ إِلَى **{message.text}**.\nيُرْجَى الْآنَ إِرْسَالُ اسْمُكِ مَعَ حَلِّ الْوَاجِبِ."
+    
     bot.send_message(message.chat.id, instructions, parse_mode="Markdown")
 
+# --- تحويل الرسائل ---
 @bot.message_handler(content_types=['photo', 'document', 'text', 'video', 'voice', 'audio'])
 def forward_to_teacher(message):
     if message.chat.id in user_selections:
