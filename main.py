@@ -3,77 +3,66 @@ from telebot import types
 from flask import Flask
 from threading import Thread
 
-# --- إعدادات البوت الأساسية ---
-# التوكن الخاص بكِ الذي زودتِني به
+# --- إعدادات البوت ---
 API_TOKEN = '8716799001:AAE0teJRfBQk7TzMFwqZ4zCuGK7E5eSpPtg'
+MY_ID = 7322325980  # الـ ID الخاص بكِ (أم عائشة)
 
-# قاعدة البيانات النهائية بالأسماء والمعرفات المستخرجة
+# قائمة المعلمات
 TEACHERS = {
     "الْمُعَلِّمَةُ فَوْزِيَّة": 8104529547,
     "الْمُعَلِّمَةُ سَنَاء": 6266125898,
     "الْمُعَلِّمَةُ أَنِيسَة": 6018090830,
-    "الْمُعَلِّمَةُ نَادِيَة": 1170097482,
-    "أُمُّ عَائِشَةَ (لِلتَّجْرِبَة)": 7322325980
+    "الْمُعَلِّمَةُ نَادِيَة": 1170097482
 }
 
-# قاموس لتخزين وجهة الإرسال لكل طالبة بشكل مؤقت
 user_selections = {}
-
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask('')
 
 @app.route('/')
-def home():
-    return "البوت يعمل بنجاح ومستعد لاستقبال الواجبات!"
+def home(): return "البوت يعمل بخصوصية تامة!"
 
-# --- أمر البداية /start ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    # إنشاء أزرار الأسماء
     markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    
+    # إضافة أسماء المعلمات للجميع
     for name in TEACHERS.keys():
         markup.add(types.KeyboardButton(name))
     
-    welcome_text = (
-        "السَّلَامُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ.\n\n"
-        "لِمَنْ تُرِيدِينَ إِرْسَالَ حَلِّ الْوَاجِبِ يَا غَالِيَتِي؟\n"
-        "💡 اخْتَارِي اسْمَ الْمُعَلِّمَةِ مِنَ الْأَزْرَارِ أَدْنَاهُ."
-    )
+    # إضافة زر التجربة لَكِ أَنْتِ فَقَطْ (لن يراه غيرك)
+    if message.chat.id == MY_ID:
+        markup.add(types.KeyboardButton("🛠️ تَجْرِبَةُ الْبُوتِ (أَنَا)"))
+    
+    welcome_text = "السَّلَامُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ.\nلِمَنْ تُرِيدِينَ إِرْسَالَ حَلِّ الْوَاجِبِ يَا غَالِيَتِي؟"
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
-# --- استقبال اختيار المعلمة وتثبيته ---
-@bot.message_handler(func=lambda message: message.text in TEACHERS.keys())
+@bot.message_handler(func=lambda message: message.text in TEACHERS.keys() or message.text == "🛠️ تَجْرِبَةُ الْبُوتِ (أَنَا)")
 def set_teacher(message):
-    user_selections[message.chat.id] = TEACHERS[message.text]
+    if message.text == "🛠️ تَجْرِبَةُ الْبُوتِ (أَنَا)":
+        user_selections[message.chat.id] = MY_ID
+    else:
+        user_selections[message.chat.id] = TEACHERS[message.text]
+        
     instructions = (
         f"حَسَنًا، سَيَتِمُّ إِرْسَالُ حَلِّكِ إِلَى **{message.text}**.\n\n"
-        "يُرْجَى الْآنَ إِرْسَالَ اسْمُكِ الثُّلَاثِي مَعَ حَلِّ الْوَاجِبِ (صُورَة، مَلَفّ، أَوْ نَصّ).\n"
-        "💡 كُلُّ مَا تُرْسِلِينَهُ الْآنَ سَيَصِلُ لِلْمُعَلِّمَةِ بِمُفْرَدِهَا بِنَجَاحٍ."
+        "يُرْجَى الْآنَ إِرْسَالَ اسْمُكِ مَعَ حَلِّ الْوَاجِبِ (صُورَة، مَلَفّ، أَوْ نَصّ)."
     )
     bot.send_message(message.chat.id, instructions, parse_mode="Markdown")
 
-# --- تحويل الوسائط (صور، ملفات، فيديوهات، بصمات صوت، نصوص) ---
 @bot.message_handler(content_types=['photo', 'document', 'text', 'video', 'voice', 'audio'])
 def forward_to_teacher(message):
-    # التأكد أن الطالبة اختارت معلمة أولاً
     if message.chat.id in user_selections:
         target_id = user_selections[message.chat.id]
         try:
-            # توجيه الرسالة فوراً للمعلمة المختارة
             bot.forward_message(target_id, message.chat.id, message.message_id)
-            bot.reply_to(message, "✅ تَمَّ إِرْسَالُ هَذِهِ الْمَادَّةِ إِلَى الْمُعَلِّمَةِ بِنَجَاحٍ.")
-        except Exception as e:
-            # في حال لم تضغط المعلمة على Start في البوت
-            bot.reply_to(message, "⚠️ عُذْرًا، الْمُعَلِّمَةُ لَمْ تُفَعِّلِ الْبُوتَ بَعْدُ لاستقبال الرسائل.")
-            print(f"Forward Error: {e}")
+            bot.reply_to(message, "✅ تَمَّ إِرْسَالُ هَذَا الْجُزْءِ بِنَجَاحٍ.")
+        except Exception:
+            bot.reply_to(message, "⚠️ الْمُعَلِّمَةُ لَمْ تُفَعِّلِ الْبُوتَ بَعْدُ.")
     else:
-        # إذا أرسلت الطالبة شيئاً قبل اختيار الاسم
-        bot.reply_to(message, "⚠️ يُرْجَى اخْتِيَارُ اسْمِ الْمُعَلِّمَةِ أَوَّلاً عبر الضغط على /start")
+        bot.reply_to(message, "⚠️ يُرْجَى اخْتِيَارُ اسْمِ الْمُعَلِّمَةِ أَوَّلاً عبر /start")
 
-# --- تشغيل الخادم الصغير للبقاء نشطاً على الاستضافة ---
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
+def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive():
     t = Thread(target=run)
     t.daemon = True
@@ -81,5 +70,4 @@ def keep_alive():
 
 if __name__ == "__main__":
     keep_alive()
-    print("البوت انطلق بنجاح...")
     bot.polling(none_stop=True)
