@@ -1,70 +1,71 @@
 import telebot
 from telebot import types
-from flask import Flask
-from threading import Thread
+from datetime import datetime
+from hijri_converter import Gregorian
 
-# --- إعدادات البوت ---
-API_TOKEN = '8716799001:AAE0teJRfBQk7TzMFwqZ4zCuGK7E5eSpPtg'
-MY_ID = 7322325980  # معرف أم عائشة الشخصي
+TOKEN = '8649317582:AAFfr-jpQ5CUarItt6jWR3cOFLTSCBqX2Ms'
+bot = telebot.TeleBot(TOKEN)
 
-# قائمة المعلمات الرسمية
-TEACHERS = {
-    "🌷 الْمُعَلِّمَةُ فَوْزِيَّة": 8104529547,
-    "🌷 الْمُعَلِّمَةُ سَنَاء": 6266125898,
-    "🌷 الْمُعَلِّمَةُ أَنِيسَة": 6018090830,
-    "🌷 الْمُعَلِّمَةُ نَادِيَة": 1170097482
-}
+# قاموس لحفظ بيانات الطالبات (مؤقت حتى يتم ربطه بقاعدة بيانات)
+# الهيكل: {chat_id: {"students": {name: status}}}
+data = {}
 
-user_selections = {}
-bot = telebot.TeleBot(API_TOKEN)
-app = Flask('')
+def get_dates():
+    now = datetime.now()
+    hdate = Gregorian.fromdate(now.date()).to_hijri()
+    return f"{now.strftime('%d %B %Y')} | {hdate.day}/{hdate.month}/{hdate.year} هـ"
 
-@app.route('/')
-def home(): return "البوت يعمل بنظام الأوامر السرية!"
+def generate_text(chat_id):
+    date_str = get_dates()
+    students = data.get(chat_id, {}).get("students", {})
+    
+    student_list = ""
+    if not students:
+        student_list = "لا يوجد مسجلات بعد.."
+    else:
+        for name, status in students.items():
+            student_list += f"🌹 {name} {'✅' if status == 'read' else '🎧'}\n"
+
+    text = (
+        f"🎀━━━━━━━━━━━━━━━━🎀\n"
+        f"📅 {date_str}\n\n"
+        f"🌸 قال رسول الله ﷺ: «اقرؤوا القرآن فإنه يأتي يوم القيامة شفيعاً لأصحابه»\n\n"
+        f"📋 القائمة:\n{student_list}\n"
+        f"🎀━━━━━━━━━━━━━━━━🎀"
+    )
+    return text
+
+def main_markup():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    # استخدام التشكيل الملون بالأيقونات لمحاكاة الألوان
+    btn1 = types.InlineKeyboardButton("📝 سجل اسمي", callback_data="reg")
+    btn2 = types.InlineKeyboardButton("❌ حذف اسمي", callback_data="del")
+    btn3 = types.InlineKeyboardButton("✅ قرأت", callback_data="read")
+    btn4 = types.InlineKeyboardButton("🔒 إغلاق القائمة", callback_data="close")
+    markup.add(btn1, btn2, btn3, btn4)
+    return markup
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
-    # تظهر فقط أسماء المعلمات للطالبات
-    for name in TEACHERS.keys():
-        markup.add(types.KeyboardButton(name))
+    chat_id = message.chat.id
+    if chat_id not in data:
+        data[chat_id] = {"students": {}}
+    bot.send_message(chat_id, generate_text(chat_id), reply_markup=main_markup())
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query(call):
+    chat_id = call.message.chat.id
+    user_name = call.from_user.first_name
     
-    welcome_text = "السَّلَامُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ.\nلِمَنْ تُرِيدِينَ إِرْسَالَ حَلِّ الْوَاجِبِ يَا غَالِيَتِي؟"
-    bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
+    if call.data == "reg":
+        data[chat_id]["students"][user_name] = "waiting"
+    elif call.data == "read":
+        data[chat_id]["students"][user_name] = "read"
+    elif call.data == "del":
+        if user_name in data[chat_id]["students"]:
+            del data[chat_id]["students"][user_name]
+            
+    bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, 
+                          text=generate_text(chat_id), reply_markup=main_markup())
 
-# --- معالج الأوامر (الأزرار الرسمية + الأمر السري) ---
-@bot.message_handler(func=lambda message: message.text in TEACHERS.keys() or message.text == "@oumaaicha1")
-def set_teacher(message):
-    if message.text == "@oumaaicha1":
-        # تفعيل التوجيه لحسابكِ سراً
-        user_selections[message.chat.id] = MY_ID
-        instructions = "🤫 تَمَّ تَوْجِيهُ الْوَاجِبَاتِ إِلَى **أُمِّ عَائِشَةَ** (وَضْعُ الِاخْتِبَارِ السِّرِّيِّ).\nيُرْجَى إِرْسَالُ الْآنَ اسْمُكِ مَعَ حَلِّ الْوَاجِبِ."
-    else:
-        # التوجيه للمعلمات
-        user_selections[message.chat.id] = TEACHERS[message.text]
-        instructions = f"حَسَنًا، سَيَتِمُّ إِرْسَالُ حَلِّكِ إِلَى **{message.text}**.\nيُرْجَى الْآنَ إِرْسَالُ اسْمُكِ مَعَ حَلِّ الْوَاجِبِ."
-    
-    bot.send_message(message.chat.id, instructions, parse_mode="Markdown")
-
-# --- تحويل الرسائل ---
-@bot.message_handler(content_types=['photo', 'document', 'text', 'video', 'voice', 'audio'])
-def forward_to_teacher(message):
-    if message.chat.id in user_selections:
-        target_id = user_selections[message.chat.id]
-        try:
-            bot.forward_message(target_id, message.chat.id, message.message_id)
-            bot.reply_to(message, "✅ تَمَّ إِرْسَالُ هَذَا الْجُزْءِ بِنَجَاحٍ.")
-        except Exception:
-            bot.reply_to(message, "⚠️ الْمُعَلِّمَةُ لَمْ تُفَعِّلِ الْبُوتَ بَعْدُ.")
-    else:
-        bot.reply_to(message, "⚠️ يُرْجَى اخْتِيَارُ اسْمِ الْمُعَلِّمَةِ أَوَّلاً عبر /start")
-
-def run(): app.run(host='0.0.0.0', port=8080)
-def keep_alive():
-    t = Thread(target=run)
-    t.daemon = True
-    t.start()
-
-if __name__ == "__main__":
-    keep_alive()
-    bot.polling(none_stop=True)
+bot.polling(none_stop=True)
